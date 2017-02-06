@@ -1,0 +1,21 @@
+go_import_path: github.com/cafebazaar/hafezieh
+
+language: go
+go:
+  - 1.7
+  - tip
+
+os:
+  - linux
+  - osx
+
+matrix:
+  allow_failures:
+    - go: tip
+  fast_finish: true
+
+script:
+  - go install ./...
+  - go test -v ./...
+
+sudo: false
