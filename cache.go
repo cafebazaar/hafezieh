@@ -9,10 +9,13 @@ var (
 	MissError = errors.New("Not cached, or deleted")
 )
 
+type CahceItemHandle interface {
+	Item() interface{}
+}
+
 type CahceItem struct {
-	Key      string
-	Item     interface{}
-	Metadata interface{}
+	Key string
+	CahceItemHandle
 }
 
 type RevisitFunc func(Cache, CahceItem)
