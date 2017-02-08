@@ -18,7 +18,7 @@ type CahceItem struct {
 	CahceItemHandle
 }
 
-type RevisitFunc func(Cache, CahceItem)
+type RevisitFunc func(Cache, CahceItem, time.Duration)
 
 // Cache is a simple cache interface, to rulw all the cache engunes
 type Cache interface {

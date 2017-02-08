@@ -1,7 +1,6 @@
 package engunes
 
 import (
-	"errors"
 	"sync"
 	"time"
 
@@ -9,8 +8,8 @@ import (
 )
 
 type InMemItem struct {
-	Item      interface{}
-	CreatedAt *time.Time
+	Item       interface{}
+	LastAccess time.Time
 }
 
 type MemoryCacheConfig struct {
@@ -19,32 +18,41 @@ type MemoryCacheConfig struct {
 type memoryCache struct {
 	config MemoryCacheConfig
 
-	items map[string]*InMemItem
-	mutex sync.RWMutex
+	items       map[string]*InMemItem
+	mutex       sync.RWMutex
+	revisitFunc hafezieh.RevisitFunc
 }
 
 func (c *memoryCache) SetRevisitFunc(revisitFunc hafezieh.RevisitFunc) error {
-	// TODO
-	return errors.New("TODO")
+	c.revisitFunc = revisitFunc
+	return nil
 }
 
 func (c *memoryCache) Set(key string, x interface{}, revisitDuration time.Duration) error {
-	// TODO
+	c.items[key] = &InMemItem{
+		Item:       x,
+		LastAccess: time.Now(),
+	}
 	return nil
 }
 
 func (c *memoryCache) Get(key string) (interface{}, error) {
-	// TODO
+	if inMemItem, found := c.items[key]; found {
+		inMemItem.LastAccess = time.Now()
+		return inMemItem.Item, nil
+	}
 	return nil, hafezieh.MissError
 }
 
 func (c *memoryCache) Del(key string) error {
-	// TODO
+	delete(c.items, key)
 	return nil
 }
 
-func NewMemoryCache() hafezieh.Cache {
+func NewMemoryCache(config MemoryCacheConfig) hafezieh.Cache {
 	return &memoryCache{
+		config: config,
+
 		items: make(map[string]*InMemItem),
 	}
 }
