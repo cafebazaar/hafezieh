@@ -1,17 +1,12 @@
 package engunes
 
 import (
-	"errors"
 	"time"
 
 	"github.com/cafebazaar/hafezieh"
 )
 
 type dummyCache struct{}
-
-func (d *dummyCache) SetRevisitFunc(revisitFunc hafezieh.RevisitFunc) error {
-	return errors.New("revisit is not supported by this engine")
-}
 
 func (d *dummyCache) Set(key string, x interface{}, revisitDuration time.Duration) error {
 	return nil
