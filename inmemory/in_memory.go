@@ -30,8 +30,6 @@ type MemoryCacheConfig struct {
 	revisitFunc RevisitFunc
 }
 
-type RevisitFunc func(cache hafezieh.Cache, key string, item *InMemItem)
-
 type memoryCache struct {
 	config MemoryCacheConfig
 
