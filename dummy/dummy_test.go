@@ -1,4 +1,4 @@
-package engunes
+package dummy
 
 import (
 	"testing"
