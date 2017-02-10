@@ -1,4 +1,4 @@
-package engunes
+package inmemory
 
 import (
 	"testing"
@@ -8,11 +8,11 @@ import (
 )
 
 func TestMemoryEngine(t *testing.T) {
-	d := NewMemoryCache(MemoryCacheConfig{})
-	if d == nil {
-		t.Fatal("Unexpected nil")
+	d, err := NewMemoryCache(MemoryCacheConfig{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	err := d.Set("t1", 1, time.Minute)
+	err = d.Set("t1", 1, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
