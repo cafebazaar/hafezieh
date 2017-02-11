@@ -173,14 +173,14 @@ func validateAndSetDefaults(config *MemoryCacheConfig) error {
 	return nil
 }
 
-func NewMemoryCache(config MemoryCacheConfig) (hafezieh.Cache, error) {
-	err := validateAndSetDefaults(&config)
+func NewMemoryCache(config *MemoryCacheConfig) (hafezieh.Cache, error) {
+	err := validateAndSetDefaults(config)
 	if err != nil {
 		return nil, err
 	}
 
 	c := &InMemoryCache{
-		config: config,
+		config: *config,
 
 		items: make(map[string]*InMemItem),
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestMemoryEngine(t *testing.T) {
-	d, err := NewMemoryCache(MemoryCacheConfig{})
+	d, err := NewMemoryCache(&MemoryCacheConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
