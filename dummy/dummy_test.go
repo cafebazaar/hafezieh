@@ -17,7 +17,7 @@ func TestDummyEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	val, err := d.Get("t1")
-	if val != nil || err != hafezieh.MissError {
+	if val != nil || err != hafezieh.ErrMiss {
 		t.Fatalf("Unexpected results. val=%v  err=%v", val, err)
 	}
 	err = d.Del("t1")

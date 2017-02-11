@@ -36,6 +36,7 @@ func (pq *revisitTimeQueue) Pop() interface{} {
 type revisitTimeQueueManager struct {
 	revisitTimeQ revisitTimeQueue
 	jobs         chan *InMemKey
+	stop         bool
 
 	clock time.Duration
 }
@@ -44,9 +45,17 @@ func (m *revisitTimeQueueManager) Push(inMemKey *InMemKey) {
 	heap.Push(&m.revisitTimeQ, inMemKey)
 }
 
+func (m *revisitTimeQueueManager) Close() {
+	m.stop = true
+}
+
 // Not designed to be run in parallel
 func (m *revisitTimeQueueManager) assignLoop() {
 	for {
+		if m.stop {
+			return
+		}
+
 		if len(m.revisitTimeQ) == 0 {
 			time.Sleep(m.clock)
 			continue
@@ -67,15 +76,14 @@ func startWorker(jobs <-chan *InMemKey, worker func(*InMemKey)) {
 	}
 }
 
-func initRevisitTimeQueueManager(clock time.Duration, workerNum int, worker func(*InMemKey)) revisitTimeQueueManager {
+func initRevisitTimeQueueManager(clock time.Duration, workerNum int, worker func(*InMemKey)) *revisitTimeQueueManager {
 	if clock < time.Second {
 		clock = time.Second
 	}
 
-	manager := revisitTimeQueueManager{
+	manager := &revisitTimeQueueManager{
 		revisitTimeQ: revisitTimeQueue{},
-
-		clock: clock,
+		clock:        clock,
 	}
 	heap.Init(&manager.revisitTimeQ)
 	for i := 0; i < workerNum; i++ {
