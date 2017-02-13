@@ -52,10 +52,10 @@ func lruCleanup(c *InMemoryCache) {
 	}
 	logrus.Debugf("[InMemoryCache:lruCleanup] Rmoving %d items (last pair=%v)", k, pairs[k])
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	for i := 0; i <= k; i++ {
 		delete(c.items, pairs[i].key)
 	}
+	c.mutex.Unlock()
 }
 
 func heapBasedCleanup(cache *InMemoryCache) {

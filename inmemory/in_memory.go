@@ -41,7 +41,7 @@ type InMemoryCache struct {
 
 	items           map[string]*InMemItem
 	revisitTimeQMan *revisitTimeQueueManager
-	mutex           sync.Mutex
+	mutex           sync.RWMutex
 	stopCleanup     bool
 }
 
@@ -57,7 +57,6 @@ func (c *InMemoryCache) Set(key string, x interface{}, revisitDuration time.Dura
 	}
 
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	n := time.Now()
 	var revisitTime *time.Time
 	if revisitDuration > 0 {
@@ -77,11 +76,15 @@ func (c *InMemoryCache) Set(key string, x interface{}, revisitDuration time.Dura
 			revisitTime: *revisitTime,
 		})
 	}
+	c.mutex.Unlock()
 	return nil
 }
 
 func (c *InMemoryCache) Get(key string) (interface{}, error) {
-	if inMemItem, found := c.items[key]; found {
+	c.mutex.RLock()
+	inMemItem, found := c.items[key]
+	c.mutex.RUnlock()
+	if found {
 		inMemItem.LastAccess = time.Now() // Not guaranteed to always increase
 		inMemItem.Hits++                  // Not guaranteed to be accurate
 		return inMemItem.Item, nil
@@ -91,8 +94,8 @@ func (c *InMemoryCache) Get(key string) (interface{}, error) {
 
 func (c *InMemoryCache) Del(key string) error {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	delete(c.items, key)
+	c.mutex.Unlock()
 	return nil
 }
 
