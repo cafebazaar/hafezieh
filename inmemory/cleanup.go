@@ -3,6 +3,7 @@ package inmemory
 import (
 	"runtime"
 	"sort"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -22,7 +23,7 @@ const (
 type CleanupFunc func(*InMemoryCache)
 
 type lastAccessKeyPair struct {
-	LastAccess int64
+	lastAccess int64
 	key        string
 }
 
@@ -30,38 +31,48 @@ type lruPairs []*lastAccessKeyPair
 
 func (a lruPairs) Len() int           { return len(a) }
 func (a lruPairs) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a lruPairs) Less(i, j int) bool { return a[i].LastAccess < a[j].LastAccess }
+func (a lruPairs) Less(i, j int) bool { return a[i].lastAccess < a[j].lastAccess }
 
-func lruCleanup(c *InMemoryCache) {
-	n := len(c.items)
-	if float64(n)*c.config.CleanupPercent < 1 {
-		return
-	}
-	pairs := make(lruPairs, 0, n)
-	for key, i := range c.items {
-		pairs = append(pairs, &lastAccessKeyPair{i.LastAccess.Unix(), key})
-	}
+func lruItems(pairs lruPairs, percent float64) lruPairs {
 	sort.Sort(pairs)
-	n = len(pairs)
-	k := (int(float64(n) * c.config.CleanupPercent)) - 1
-	if k < 0 {
-		k = 0
-	}
+	n := len(pairs)
+	k := (int(float64(n) * percent * 0.01))
 	if k >= n {
 		k = n - 1
 	}
-	logrus.Debugf("[InMemoryCache:lruCleanup] Rmoving %d items (last pair=%v)", k, pairs[k])
-	c.mutex.Lock()
-	for i := 0; i <= k; i++ {
-		delete(c.items, pairs[i].key)
-	}
-	c.mutex.Unlock()
+	return pairs[0:k]
 }
 
 func heapBasedCleanup(cache *InMemoryCache) {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	if mem.HeapAlloc > cache.config.CleanupHeapTarget {
-		lruCleanup(cache)
+		logrus.Debugf("[InMemoryCache:lruCleanup] HeapAlloc=%d - Cleanup is triggered", mem.HeapAlloc)
+
+		cache.mutex.RLock()
+		n := len(cache.items)
+		pairs := make(lruPairs, n)
+		j := 0
+		for key, i := range cache.items {
+			pairs[j] = &lastAccessKeyPair{i.LastAccess.Unix(), key}
+			j++
+		}
+		cache.mutex.RUnlock()
+
+		lruItems(pairs, cache.config.CleanupPercent)
+		k := len(pairs)
+		seconds := time.Now().Unix() - pairs[k-1].lastAccess
+		logrus.Debugf("[InMemoryCache:lruCleanup] Rmoving %d items (most recent was accessed %d seconds ago)", k, seconds)
+
+		cache.mutex.Lock()
+		for _, item := range pairs {
+			delete(cache.items, item.key)
+		}
+		cache.mutex.Unlock()
+
+		logrus.Debugf("[InMemoryCache:lruCleanup] Calling GC")
+		runtime.GC()
+		runtime.ReadMemStats(&mem)
+		logrus.Debugf("[InMemoryCache:lruCleanup] New HeapAlloc=%d", mem.HeapAlloc)
 	}
 }
