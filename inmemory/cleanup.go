@@ -34,9 +34,12 @@ func (a lruPairs) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a lruPairs) Less(i, j int) bool { return a[i].lastAccess < a[j].lastAccess }
 
 func lruItems(pairs lruPairs, percent float64) lruPairs {
-	sort.Sort(pairs)
 	n := len(pairs)
 	k := (int(float64(n) * percent * 0.01))
+	if k <= 0 {
+		return pairs
+	}
+	sort.Sort(pairs)
 	if k >= n {
 		k = n - 1
 	}
