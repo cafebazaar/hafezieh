@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	SmallDurationError = errors.New("less than 5 seconds isn't supported by this engine")
+	ErrSmallDuration = errors.New("less than 5 seconds isn't supported by this engine")
 )
 
 type InMemItem struct {
@@ -29,11 +29,12 @@ type MemoryCacheConfig struct {
 	RevisitClock           time.Duration `mapstructure:"revisit-clock"`
 	RevisitFunc            RevisitFunc
 
-	CleanupMechanism  CleanupMechanism `mapstructure:"cleanup-mechanism"`
-	CleanupClock      time.Duration    `mapstructure:"cleanup-clock"`
-	CleanupHeapTarget uint64           `mapstructure:"cleanup-heap-target"`
-	CleanupPercent    float64          `mapstructure:"cleanup-percent"`
-	CleanupCustomFunc CleanupFunc
+	CleanupMechanism           CleanupMechanism `mapstructure:"cleanup-mechanism"`
+	CleanupClock               time.Duration    `mapstructure:"cleanup-clock"`
+	CleanupHeapTarget          uint64           `mapstructure:"cleanup-heap-target"`
+	CleanupNumberOfItemsTarget uint64           `mapstructure:"cleanup-number-target"`
+	CleanupPercent             float64          `mapstructure:"cleanup-percent"`
+	CleanupCustomFunc          CleanupFunc
 }
 
 type InMemoryCache struct {
@@ -53,7 +54,7 @@ func (c *InMemoryCache) Set(key string, x interface{}, revisitDuration time.Dura
 		revisitDuration = c.config.DefaultRevisitDuration
 	}
 	if revisitDuration > 0 && revisitDuration < (5*time.Second) {
-		return SmallDurationError
+		return ErrSmallDuration
 	}
 
 	c.mutex.Lock()
@@ -126,7 +127,9 @@ func (c *InMemoryCache) cleanupLoop() {
 	case CleanupNone:
 		return
 	case CleanupHeapBasedLRU:
-		cFunc = heapBasedCleanup
+		cFunc = heapBasedLRUCleanup
+	case CleanupNumberBasedLRU:
+		cFunc = numberBasedLRUCleanup
 	case CleanupCustomFunc:
 		cFunc = c.config.CleanupCustomFunc
 	}
@@ -160,16 +163,20 @@ func validateAndSetDefaults(config *MemoryCacheConfig) error {
 		if config.CleanupClock < 5*time.Second {
 			return errors.New("CleanupClock should be at keast 5 seconds")
 		}
+	}
+	if config.CleanupMechanism == CleanupHeapBasedLRU {
+		if config.CleanupHeapTarget == 0 {
+			return errors.New("No CleanupHeapTarget is set")
+		}
 		if config.CleanupPercent == 0 {
 			config.CleanupPercent = 5
 		}
 		if config.CleanupPercent > 100 || config.CleanupPercent < 0 {
 			return errors.New("CleanupPercent should be between 0 and 100")
 		}
-	}
-	if config.CleanupMechanism == CleanupHeapBasedLRU {
-		if config.CleanupHeapTarget == 0 {
-			return errors.New("No CleanupHeapTarget is set")
+	} else if config.CleanupMechanism == CleanupNumberBasedLRU {
+		if config.CleanupNumberOfItemsTarget == 0 {
+			return errors.New("No CleanupNumberOfItemsTarget is set")
 		}
 	}
 

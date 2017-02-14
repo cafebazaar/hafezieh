@@ -36,3 +36,40 @@ func TestMemoryEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateAndSetDefaults(t *testing.T) {
+	{
+		err := validateAndSetDefaults(&MemoryCacheConfig{
+			CleanupMechanism: CleanupHeapBasedLRU,
+		})
+		if err == nil || err.Error() != "No CleanupHeapTarget is set" {
+			t.Fatal("expecting another error, got:", err)
+		}
+	}
+	{
+		err := validateAndSetDefaults(&MemoryCacheConfig{
+			CleanupMechanism:  CleanupHeapBasedLRU,
+			CleanupHeapTarget: 100000,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	{
+		err := validateAndSetDefaults(&MemoryCacheConfig{
+			CleanupMechanism: CleanupNumberBasedLRU,
+		})
+		if err == nil || err.Error() != "No CleanupNumberOfItemsTarget is set" {
+			t.Fatal("expecting another error, got:", err)
+		}
+	}
+	{
+		err := validateAndSetDefaults(&MemoryCacheConfig{
+			CleanupMechanism:           CleanupNumberBasedLRU,
+			CleanupNumberOfItemsTarget: 100000,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
