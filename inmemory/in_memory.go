@@ -12,6 +12,44 @@ var (
 	ErrSmallDuration = errors.New("less than 5 seconds isn't supported by this engine")
 )
 
+type InMemoryCache struct {
+	config *InMemoryCacheConfig
+
+	items           map[string]*InMemItem
+	revisitTimeQMan *revisitTimeQueueManager
+	mutex           sync.RWMutex
+	janitor         *janitor
+}
+
+type InMemoryCacheConfig struct {
+	RevisitDefaultDuration time.Duration `mapstructure:"revisit-default-duration"`
+	RevisitNumberOfWorkers int           `mapstructure:"revisit-number-of-workers"`
+	RevisitClock           time.Duration `mapstructure:"revisit-clock"`
+	RevisitFunc            RevisitFunc
+
+	Cleanup *InMemoryCleanupConfig `mapstructure:"cleanup"`
+}
+
+func (config *InMemoryCacheConfig) validateAndSetDefaults() error {
+	if config.RevisitNumberOfWorkers > 0 {
+		if config.RevisitClock == 0 {
+			config.RevisitClock = 30 * time.Second
+		}
+		if config.RevisitFunc == nil {
+			return errors.New("No RevisitFunc is set but RevisitNumberOfWorkers is greater than 0")
+		}
+	}
+
+	if config.Cleanup != nil {
+		err := config.Cleanup.validateAndSetDefaults()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type InMemItem struct {
 	Item       interface{}
 	CreatedAt  time.Time
@@ -22,36 +60,12 @@ type InMemItem struct {
 	revisitTime *time.Time
 }
 
-type MemoryCacheConfig struct {
-	DefaultRevisitDuration time.Duration `mapstructure:"default-revisit-duration"`
-
-	RevisitNumberOfWorkers int           `mapstructure:"revisit-number-of-workers"`
-	RevisitClock           time.Duration `mapstructure:"revisit-clock"`
-	RevisitFunc            RevisitFunc
-
-	CleanupMechanism           CleanupMechanism `mapstructure:"cleanup-mechanism"`
-	CleanupClock               time.Duration    `mapstructure:"cleanup-clock"`
-	CleanupHeapTarget          uint64           `mapstructure:"cleanup-heap-target"`
-	CleanupNumberOfItemsTarget uint64           `mapstructure:"cleanup-number-target"`
-	CleanupPercent             float64          `mapstructure:"cleanup-percent"`
-	CleanupCustomFunc          CleanupFunc
-}
-
-type InMemoryCache struct {
-	config MemoryCacheConfig
-
-	items           map[string]*InMemItem
-	revisitTimeQMan *revisitTimeQueueManager
-	mutex           sync.RWMutex
-	stopCleanup     bool
-}
-
 func (c *InMemoryCache) Set(key string, x interface{}, revisitDuration time.Duration) error {
 	if revisitDuration < 0 {
 		return hafezieh.ErrNegativeDuration
 	}
-	if revisitDuration == 0 {
-		revisitDuration = c.config.DefaultRevisitDuration
+	if revisitDuration == hafezieh.UseDefaultValue {
+		revisitDuration = c.config.RevisitDefaultDuration
 	}
 	if revisitDuration > 0 && revisitDuration < (5*time.Second) {
 		return ErrSmallDuration
@@ -104,7 +118,7 @@ func (c *InMemoryCache) Close() error {
 	if c.revisitTimeQMan != nil {
 		c.revisitTimeQMan.Close()
 	}
-	c.stopCleanup = true
+	c.janitor.stop()
 	return nil
 }
 
@@ -121,83 +135,27 @@ func (c *InMemoryCache) callRevisit(inMemKey *InMemKey) {
 	}
 }
 
-func (c *InMemoryCache) cleanupLoop() {
-	var cFunc CleanupFunc
-	switch c.config.CleanupMechanism {
-	case CleanupNone:
-		return
-	case CleanupHeapBasedLRU:
-		cFunc = heapBasedLRUCleanup
-	case CleanupNumberBasedLRU:
-		cFunc = numberBasedLRUCleanup
-	case CleanupCustomFunc:
-		cFunc = c.config.CleanupCustomFunc
-	}
-
-	for {
-		if c.stopCleanup {
-			return
-		}
-		time.Sleep(c.config.CleanupClock)
-		cFunc(c)
-	}
-}
-
-func validateAndSetDefaults(config *MemoryCacheConfig) error {
-	if config.RevisitNumberOfWorkers > 0 {
-		if config.RevisitClock == 0 {
-			config.RevisitClock = 30 * time.Second
-		}
-		if config.RevisitFunc == nil {
-			return errors.New("No RevisitFunc is set but RevisitNumberOfWorkers is greater than 0")
-		}
-	}
-
-	if config.CleanupMechanism == CleanupCustomFunc && config.CleanupCustomFunc == nil {
-		return errors.New("No CleanupCustomFunc is set but CleanupMechanism is set on CleanupCustomFunc")
-	}
-	if config.CleanupMechanism != CleanupNone {
-		if config.CleanupClock == 0 {
-			config.CleanupClock = time.Minute
-		}
-		if config.CleanupClock < 5*time.Second {
-			return errors.New("CleanupClock should be at keast 5 seconds")
-		}
-	}
-	if config.CleanupMechanism == CleanupHeapBasedLRU {
-		if config.CleanupHeapTarget == 0 {
-			return errors.New("No CleanupHeapTarget is set")
-		}
-		if config.CleanupPercent == 0 {
-			config.CleanupPercent = 5
-		}
-		if config.CleanupPercent > 100 || config.CleanupPercent < 0 {
-			return errors.New("CleanupPercent should be between 0 and 100")
-		}
-	} else if config.CleanupMechanism == CleanupNumberBasedLRU {
-		if config.CleanupNumberOfItemsTarget == 0 {
-			return errors.New("No CleanupNumberOfItemsTarget is set")
-		}
-	}
-
-	return nil
-}
-
-func NewMemoryCache(config *MemoryCacheConfig) (hafezieh.Cache, error) {
-	err := validateAndSetDefaults(config)
+func NewMemoryCache(config *InMemoryCacheConfig) (hafezieh.Cache, error) {
+	err := config.validateAndSetDefaults()
 	if err != nil {
 		return nil, err
 	}
 
 	c := &InMemoryCache{
-		config: *config,
+		config: config,
 
 		items: make(map[string]*InMemItem),
 	}
 	if c.config.RevisitNumberOfWorkers > 0 {
 		c.revisitTimeQMan = initRevisitTimeQueueManager(config.RevisitClock, config.RevisitNumberOfWorkers, c.callRevisit)
 	}
-	go c.cleanupLoop()
+
+	if c.config.Cleanup != nil {
+		c.janitor, err = newJanitor(c.config.Cleanup, c)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return c, nil
 }

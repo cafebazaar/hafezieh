@@ -7,7 +7,7 @@ import (
 
 // UseDefaultValue can be used in Set, to use the default revisitDuration value
 // by the engine
-const UseDefaultValue time.Duration = 0
+const UseDefaultValue time.Duration = -1
 
 var (
 	// ErrMiss is the error returned on Get, when the key is not available
