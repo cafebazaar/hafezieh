@@ -2,12 +2,11 @@ package inmemory
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"sort"
-	"time"
-
-	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -18,7 +17,6 @@ type janitor struct {
 	cleanupFunc CleanupFunc
 	stopFlag    bool
 	wg          sync.WaitGroup
-	mutex       sync.Mutex
 }
 
 type InMemoryCleanupConfig struct {
@@ -100,7 +98,6 @@ func (j *janitor) leastRecentlyUsedPairs(pairs lruPairs, k int) lruPairs {
 }
 
 func (j *janitor) generatePairs(cache *InMemoryCache) lruPairs {
-
 	cache.mutex.RLock()
 	n := len(cache.items)
 	pairs := make(lruPairs, n)

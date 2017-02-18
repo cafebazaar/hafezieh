@@ -2,6 +2,7 @@ package inmemory
 
 import (
 	"container/heap"
+	"sync"
 	"testing"
 	"time"
 )
@@ -9,11 +10,25 @@ import (
 func workerNoop(*InMemKey) {}
 
 func TestRevisitTimeQueueManager(t *testing.T) {
-	m := initRevisitTimeQueueManager(0, 0, workerNoop)
-	m.Push(&InMemKey{"3", time.Date(2000, 1, 1, 1, 3, 1, 0, time.Local)})
-	m.Push(&InMemKey{"4", time.Date(2000, 1, 1, 1, 4, 1, 0, time.Local)})
-	m.Push(&InMemKey{"2", time.Date(2000, 1, 1, 1, 2, 1, 0, time.Local)})
-	m.Push(&InMemKey{"1", time.Date(2000, 1, 1, 1, 1, 1, 0, time.Local)})
+	var mutex sync.RWMutex
+	m := initRevisitTimeQueueManager(&mutex, 0, 0, workerNoop)
+	mutex.Lock()
+	m.Push(&InMemKey{"3", time.Date(2100, 1, 1, 1, 3, 1, 0, time.Local)})
+	mutex.Unlock()
+	mutex.Lock()
+	m.Push(&InMemKey{"4", time.Date(2100, 1, 1, 1, 4, 1, 0, time.Local)})
+	mutex.Unlock()
+	mutex.Lock()
+	m.Push(&InMemKey{"2", time.Date(2100, 1, 1, 1, 2, 1, 0, time.Local)})
+	mutex.Unlock()
+	mutex.Lock()
+	m.Push(&InMemKey{"1", time.Date(2100, 1, 1, 1, 1, 1, 0, time.Local)})
+	mutex.Unlock()
+	mutex.Lock()
+	m.Push(&InMemKey{"5", time.Date(2100, 1, 1, 1, 5, 1, 0, time.Local)})
+	mutex.Unlock()
+
+	m.Close()
 
 	if m.revisitTimeQ[0].key != "1" {
 		t.Fatalf("unexpected peek: %v", m.revisitTimeQ[0])
@@ -33,6 +48,10 @@ func TestRevisitTimeQueueManager(t *testing.T) {
 	i4 := heap.Pop(&m.revisitTimeQ).(*InMemKey)
 	if i4.key != "4" {
 		t.Fatalf("unexpected pop: %v", i4)
+	}
+	i5 := heap.Pop(&m.revisitTimeQ).(*InMemKey)
+	if i5.key != "5" {
+		t.Fatalf("unexpected pop: %v", i5)
 	}
 	if len(m.revisitTimeQ) != 0 {
 		t.Fatalf("unexpected len: %v", m.revisitTimeQ)

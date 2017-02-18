@@ -147,7 +147,7 @@ func NewMemoryCache(config *InMemoryCacheConfig) (hafezieh.Cache, error) {
 		items: make(map[string]*InMemItem),
 	}
 	if c.config.RevisitNumberOfWorkers > 0 {
-		c.revisitTimeQMan = initRevisitTimeQueueManager(config.RevisitClock, config.RevisitNumberOfWorkers, c.callRevisit)
+		c.revisitTimeQMan = initRevisitTimeQueueManager(&c.mutex, config.RevisitClock, config.RevisitNumberOfWorkers, c.callRevisit)
 	}
 
 	if c.config.Cleanup != nil {

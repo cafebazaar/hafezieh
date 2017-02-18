@@ -1,7 +1,10 @@
 package inmemory
 
-import "container/heap"
-import "time"
+import (
+	"container/heap"
+	"sync"
+	"time"
+)
 
 type InMemKey struct {
 	key         string
@@ -35,10 +38,10 @@ func (pq *revisitTimeQueue) Pop() interface{} {
 
 type revisitTimeQueueManager struct {
 	revisitTimeQ revisitTimeQueue
+	clock        time.Duration
 	jobs         chan *InMemKey
 	stop         bool
-
-	clock time.Duration
+	wg           sync.WaitGroup
 }
 
 func (m *revisitTimeQueueManager) Push(inMemKey *InMemKey) {
@@ -47,36 +50,51 @@ func (m *revisitTimeQueueManager) Push(inMemKey *InMemKey) {
 
 func (m *revisitTimeQueueManager) Close() {
 	m.stop = true
+	m.wg.Wait()
 }
 
 // Not designed to be run in parallel
-func (m *revisitTimeQueueManager) assignLoop() {
+func (m *revisitTimeQueueManager) assignLoop(mutex *sync.RWMutex) {
 	for {
 		if m.stop {
-			return
+			break
 		}
-
-		if len(m.revisitTimeQ) == 0 {
+		mutex.RLock()
+		n := len(m.revisitTimeQ)
+		var currentNext *InMemKey
+		if n == 0 {
+			mutex.RUnlock()
 			time.Sleep(m.clock)
 			continue
+		} else {
+			currentNext = m.revisitTimeQ[0]
+			mutex.RUnlock()
 		}
 		now := time.Now()
-		currentNext := m.revisitTimeQ[0]
 		if currentNext.revisitTime.Sub(now) < m.clock {
+			mutex.Lock()
 			m.jobs <- heap.Pop(&m.revisitTimeQ).(*InMemKey)
+			mutex.Unlock()
 			continue
+		}
+		if m.stop {
+			break
 		}
 		time.Sleep(m.clock)
 	}
+	close(m.jobs)
+	m.wg.Done()
 }
 
-func startWorker(jobs <-chan *InMemKey, worker func(*InMemKey)) {
+func (m *revisitTimeQueueManager) startWorker(jobs <-chan *InMemKey, worker func(*InMemKey)) {
 	for j := range jobs {
 		worker(j)
 	}
+	m.wg.Done()
 }
 
-func initRevisitTimeQueueManager(clock time.Duration, workerNum int, worker func(*InMemKey)) *revisitTimeQueueManager {
+func initRevisitTimeQueueManager(
+	mutex *sync.RWMutex, clock time.Duration, workerNum int, worker func(*InMemKey)) *revisitTimeQueueManager {
 	if clock < time.Second {
 		clock = time.Second
 	}
@@ -84,11 +102,14 @@ func initRevisitTimeQueueManager(clock time.Duration, workerNum int, worker func
 	manager := &revisitTimeQueueManager{
 		revisitTimeQ: revisitTimeQueue{},
 		clock:        clock,
+		jobs:         make(chan *InMemKey, workerNum),
 	}
 	heap.Init(&manager.revisitTimeQ)
 	for i := 0; i < workerNum; i++ {
-		go startWorker(manager.jobs, worker)
+		manager.wg.Add(1)
+		go manager.startWorker(manager.jobs, worker)
 	}
-	go manager.assignLoop()
+	manager.wg.Add(1)
+	go manager.assignLoop(mutex)
 	return manager
 }
