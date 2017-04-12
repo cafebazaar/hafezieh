@@ -136,5 +136,9 @@ func BenchmarkNumberBasedLRUCleanup(b *testing.B) {
 			c.items[fmt.Sprintf("%03d", i)] = &InMemItem{i, nw, nw.Add(time.Duration(i) * time.Second), 0, 0, nil}
 			j.numberBasedLRUCleanup(c)
 		}
+		n := len(c.items)
+		if n != 100 {
+			b.Fatal("unexpected len of c.items:", n)
+		}
 	}
 }

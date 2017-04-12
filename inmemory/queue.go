@@ -4,6 +4,8 @@ import (
 	"container/heap"
 	"sync"
 	"time"
+
+	"github.com/Sirupsen/logrus"
 )
 
 type InMemKey struct {
@@ -73,7 +75,11 @@ func (m *revisitTimeQueueManager) assignLoop(mutex *sync.RWMutex) {
 		now := time.Now()
 		if currentNext.revisitTime.Sub(now) < m.clock {
 			mutex.Lock()
-			m.jobs <- heap.Pop(&m.revisitTimeQ).(*InMemKey)
+			select {
+			case m.jobs <- heap.Pop(&m.revisitTimeQ).(*InMemKey):
+			default:
+				logrus.Warn("Dropping revisit, the queue is full.")
+			}
 			mutex.Unlock()
 			continue
 		}
@@ -102,7 +108,7 @@ func initRevisitTimeQueueManager(
 	manager := &revisitTimeQueueManager{
 		revisitTimeQ: revisitTimeQueue{},
 		clock:        clock,
-		jobs:         make(chan *InMemKey, workerNum),
+		jobs:         make(chan *InMemKey, workerNum*10),
 	}
 	heap.Init(&manager.revisitTimeQ)
 	for i := 0; i < workerNum; i++ {
