@@ -127,12 +127,16 @@ func (c *InMemoryCache) callRevisit(inMemKey *InMemKey) {
 	if revisitFunc == nil {
 		return
 	}
+	c.mutex.RLock()
 	if inMemItem, found := c.items[inMemKey.key]; found {
+		c.mutex.RUnlock()
 		if inMemItem.revisitTime != nil && *inMemItem.revisitTime == inMemKey.revisitTime {
 			// Not an old hook
 			revisitFunc(c, inMemKey.key, inMemItem)
 		}
+		return
 	}
+	c.mutex.RUnlock()
 }
 
 func NewMemoryCache(config *InMemoryCacheConfig) (hafezieh.Cache, error) {
